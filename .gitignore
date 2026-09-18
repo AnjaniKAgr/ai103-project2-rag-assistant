@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+eval-generated.jsonl
+eval-results.json

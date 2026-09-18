@@ -16,8 +16,17 @@ from azure.identity import DefaultAzureCredential
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_PATH = PROJECT_ROOT / "eval-data.jsonl"
+UNSUPPORTED_DATA_PATH = PROJECT_ROOT / "eval-unsupported.jsonl"
 GENERATED_DATA_PATH = PROJECT_ROOT / "eval-generated.jsonl"
 OUTPUT_PATH = PROJECT_ROOT / "eval-results.json"
+ABSTENTION_PHRASES = (
+    "not enough information",
+    "do not have enough information",
+    "don't have enough information",
+    "does not provide",
+    "could not find",
+    "insufficient",
+)
 
 
 def load_rag_module():
@@ -110,6 +119,71 @@ def create_evaluators():
     }
 
 
+def response_abstains(response, forbidden_answers):
+    """Return whether a response clearly refuses an unsupported question.
+
+    The check requires an explicit insufficient-evidence phrase and rejects
+    the response if it contains any known answer that the model could supply
+    from its pretrained knowledge rather than from the indexed documents.
+    """
+    normalized_response = response.casefold()
+    has_abstention = any(
+        phrase in normalized_response for phrase in ABSTENTION_PHRASES
+    )
+    leaked_answer = any(
+        answer.casefold() in normalized_response for answer in forbidden_answers
+    )
+    return has_abstention and not leaked_answer
+
+
+def run_unsupported_question_tests(rag_module):
+    """Verify that the assistant refuses questions unsupported by the index.
+
+    Each JSONL row supplies an out-of-scope query and known answers that must
+    not appear. The real retrieval and generation pipeline is executed, then
+    a deterministic assertion checks for an explicit abstention. A failed
+    case raises an error so the script can be used as a regression check.
+    """
+    openai_client, search_client = rag_module.create_clients()
+    embedding_deployment = rag_module.required_environment_variable(
+        "EMBEDDING_MODEL_DEPLOYMENT"
+    )
+    chat_deployment = os.environ.get("CHAT_MODEL_DEPLOYMENT", "gpt-4o")
+
+    with UNSUPPORTED_DATA_PATH.open(encoding="utf-8") as source_file:
+        test_rows = [json.loads(line) for line in source_file if line.strip()]
+
+    failures = []
+    for number, row in enumerate(test_rows, start=1):
+        results = rag_module.retrieve_context(
+            row["query"],
+            openai_client,
+            search_client,
+            embedding_deployment,
+        )
+        response = rag_module.generate_answer(
+            row["query"],
+            [],
+            results,
+            openai_client,
+            chat_deployment,
+        )
+        passed = response_abstains(response, row["forbidden_answers"])
+        print(
+            f"Unsupported question {number}/{len(test_rows)}: "
+            f"{'PASS' if passed else 'FAIL'}"
+        )
+        if not passed:
+            failures.append((row["query"], response))
+
+    if failures:
+        details = "\n\n".join(
+            f"Query: {query}\nResponse: {response}"
+            for query, response in failures
+        )
+        raise RuntimeError(f"Unsupported-question evaluation failed:\n{details}")
+
+
 def main():
     """Run all dataset questions through the RAG app and save the scores.
 
@@ -137,6 +211,7 @@ def main():
     )
     print(f"\nEvaluation complete. Results: {OUTPUT_PATH}")
     print(result.get("metrics", result))
+    run_unsupported_question_tests(rag_module)
 
 
 if __name__ == "__main__":

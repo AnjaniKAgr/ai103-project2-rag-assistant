@@ -42,6 +42,7 @@ User question -> query embedding -> hybrid search -+
 - `ingest.py` — chunks, embeds, indexes, and verifies the documents
 - `rag-assistant.py` — interactive retrieval and answer-generation application
 - `eval-data.jsonl` — repeatable evaluation questions
+- `eval-unsupported.jsonl` — out-of-scope questions and forbidden answers
 - `evaluate-rag.py` — generates RAG outputs and runs Microsoft evaluators
 - `EVALUATION.md` — baseline, tuning changes, results, and lessons learned
 - `.env.example` — required configuration template
@@ -109,7 +110,9 @@ python .\evaluate-rag.py
 
 The runner first creates query, response, and retrieved-context rows, then
 scores them with the Retrieval, Groundedness, and Relevance evaluators. See
-`EVALUATION.md` for the baseline and tuned results.
+`EVALUATION.md` for the baseline and tuned results. It also runs a deterministic
+regression test that requires unsupported questions to receive an explicit
+insufficient-evidence response instead of an answer from model memory.
 
 ## Authentication and security
 
@@ -117,4 +120,3 @@ The code uses Microsoft Entra credentials instead of API keys. Do not commit
 `.env`, secrets, tokens, or generated evaluation output containing private
 source material. Apply least-privilege Azure roles and enforce authorization
 during retrieval for production RAG systems.
-

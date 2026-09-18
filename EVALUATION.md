@@ -21,6 +21,13 @@ metrics, Foundry agent runtime components, and RAG security controls. The test
 cases are stored in `eval-data.jsonl`. Generated responses and contexts are
 excluded from Git.
 
+An additional regression case in `eval-unsupported.jsonl` asks for the capital
+of France. That information is outside the indexed study corpus. The test
+passes only when the assistant explicitly says the evidence is insufficient
+and does not return the forbidden answer, `Paris`. This case is evaluated
+separately so intentionally irrelevant retrieval does not lower the normal
+retrieval-quality score.
+
 ## Baseline results
 
 The initial configuration used four vector candidates and returned the best
@@ -84,7 +91,7 @@ acceptable for this small study corpus.
 - Do not use prompt changes to compensate for evidence that was never retrieved.
 - Preserve a baseline and rerun the same dataset after a controlled change.
 - Review both pass rates and average scores.
+- Test appropriate refusal separately from in-scope retrieval quality.
 - Two retrieval settings changed together, so this run proves the combination
   worked, not which individual setting caused the improvement. A production
   experiment should isolate them in separate runs.
-
